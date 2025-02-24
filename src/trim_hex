@@ -1,0 +1,7 @@
+#!/bin/sh
+local out="$1"
+until [ "${out%00}" = "${out}" ] && [ "${out% }" = "$out" ]; do
+  out="${out%00}"
+  out="${out% }"
+done
+printf '%s\n' "$out"

@@ -1,0 +1,11 @@
+#!/bin/sh
+local out=""
+#echo "${1} | ${#1}" >&2
+if ! [ "${#1}" -eq 2 ]; then 
+  IFS=" "; for item in $1; do
+    out="$out$item"
+  done
+else
+  out="$1"
+fi
+printf '%d\n' "0x$out"

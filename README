@@ -1,0 +1,17 @@
+---
+ext-data-sh
+-- simple metadata standard for storing on externally managed files
+---- in mostly pure sh!
+---
+Plan
+-- the plan for this project is to eventually read and export the metadata of flac, vogg vorbis, and opus files
+---- this will then be supplemented with a standard to document the locations of other copies on third-party platforms
+  >>>> both of these are far off, but work will begin with flac
+---
+Intended offerings
+-- this is additionally intended to offer a standardized system for multiple artists and genres
+---
+Dependencies
+-- only something to raw read data from files
+---- such as od(1) and a wrapper
+---

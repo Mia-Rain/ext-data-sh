@@ -1,0 +1,130 @@
+#!/bin/sh
+##
+# block types are; magic, header, and length [3/4]
+# everything else can be inferred
+local block_type=magic
+local HEX=000
+local line=""
+local global_counter=0
+local counter_max=127
+local block_collection=""
+local end_state=1 # 1 is false; 0 is true
+local block_length=999
+local perm_counter=0
+local stream=-1
+local data_stream_counter=0
+local data_stream_counter_max=127
+local data_block_length=999
+local stream_element=0
+local list_counter=init_val
+
+ofile "$1" "HEX" | while read -r line; do
+  IFS=" "; for HEX in $line; do
+    : $((global_counter+=1))
+    : $((perm_counter+=1))
+    if [ "$list_counter" != "init_val" ]; then
+      [ "$list_counter" -ge "${user_list_length}" ] && end_state=0
+    fi
+    [ "$perm_counter" -lt 41 ] && end_state=1
+    block_collection="${block_collection# } $HEX"
+    #printf '%s\n' "block type = $block_type | global counter = $global_counter | current max = $counter_max | stream element = $stream_element | data counter = $data_stream_counter/$data_stream_counter_max" >&2
+    case "$block_type" in
+      "magic") 
+        counter_max=4 # start at 0 so 3 = 4
+        if [ "$global_counter" -eq "$counter_max" ]; then
+          magic="$block_collection"; printf '%s' "$magic 0a "
+          block_collection=""; counter_max=1; global_counter=0; block_type=header
+        fi 
+        ;;
+      "header")
+        #echo "$HEX | $global_counter -- $counter_max"
+        if [ $global_counter -eq $counter_max ] && [ "${HEX%?}" = "8" ]; then 2>/dev/null
+          end_state=0 # will end metadata dump once counter is maxxed
+          block_type="length3"; counter_max=3; global_counter=0
+        elif [ $global_counter -eq $counter_max ]; then
+          end_state=1 # will continue
+          counter_max=3; block_collection=""; global_counter=0; block_type="length3"
+        fi
+        ;;
+      "length3")
+        #echo "$end_state | $block_type | $block_collection"
+        if [ "$end_state" -eq 1 ]; then
+          #keep alive
+          if [ $global_counter -eq $counter_max ]; then
+            block_length="$(dec "$block_collection")" # somehow convert to decimal
+            #echo "$(dec "$block_collection") | $block_collection"
+            #printf 'length is %s\n' "$block_length" >&2
+            counter_max=$block_length; block_collection=""; global_counter=0; block_type="data"
+            : $((stream+=1))
+          fi
+        else
+          global_counter=0; counter_max=2
+          #block_collection=""
+          block_type="ending"
+        fi
+        ;;
+      "ending")
+        #echo "$global_counter | $counter_max | $block_collection"
+        if [ $global_counter -ge $counter_max ]; then
+          printf '%s\n' "$block_collection 0a "
+          exit 0
+        fi
+        # get the last few bits of data out
+        ;;
+      "data")
+        if [ "$global_counter" -ge "$counter_max" ] && [ "$stream" -eq 0 ]; then
+          block_collection=""; counter_max=1; global_counter=0; block_type=header; block_length=0
+        elif [ "$stream" -eq 1 ] && [ "$global_counter" -lt "$counter_max" ]; then
+          block_type="length4"; data_stream_counter_max=3; stream_element=-1
+        fi
+        ;;
+      "length4")
+        : $((data_stream_counter+=1))
+        if [ "$data_stream_counter" -ge "$data_stream_counter_max" ]; then
+          block_collection="$(trim_hex "$block_collection")"; data_block_length="$(dec "$block_collection")"
+          case "$stream_element" in
+            '-1') block_type="vendor"; block_collection=""; data_stream_counter_max=$data_block_length; data_block_length=0; data_stream_counter=0 ;;
+            *) block_type="comment"; block_collection=""; data_stream_counter_max=$data_block_length; data_block_length=0; data_stream_counter=0 ;;
+          esac
+        fi
+        if [ "$global_counter" -eq "$counter_max" ]; then
+          block_type=header; block_length=0; global_counter=0; counter_max=1; block_collection=""
+        fi
+        ;;
+      "list-length")
+        # this is basically length4 but the data is stored for later when it is needed; if ever
+        : $((data_stream_counter+=1))
+        if [ "$data_stream_counter" -ge "$data_stream_counter_max" ]; then
+          block_collection="$(trim_hex "$block_collection")"; user_list_length="$(dec "$block_collection")"
+          block_type=length4; block_collection=""; data_stream_counter_max=4; data_stream_counter=0
+          list_counter=0
+          : $((stream_element+=1))
+        fi
+        ;;
+      "vendor")
+        : $((data_stream_counter+=1))
+        if [ "$data_stream_counter" -ge "$data_stream_counter_max" ]; then
+          data_block_length=0; data_stream_counter=0; block_collection=""; block_type="list-length"; data_stream_counter_max=4
+          : $((stream_element+=1))
+        fi
+        ;; # vendor data is likely useless
+      "comment")
+        : $((data_stream_counter+=1))
+        if [ "$data_stream_counter" -ge "$data_stream_counter_max" ]; then
+          printf '%s' "$block_collection 0a "
+          if [ "$user_list_length" ]; then 
+            : $((list_counter+=1))
+          fi
+          if [ "$list_counter" -ge "$user_list_length" ]; then
+            block_type="header"; counter_max=1; global_counter=
+          else 
+            block_type="length4"
+          fi
+          block_collection=""
+          data_stream_counter=0
+          data_stream_counter_max=4
+          : $((stream_element+=1))
+        fi
+    esac
+  done
+done

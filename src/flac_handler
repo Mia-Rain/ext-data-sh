@@ -1,0 +1,3 @@
+#!/bin/sh
+flac_dump "$1" | utf8_hex ""
+printf '\n'

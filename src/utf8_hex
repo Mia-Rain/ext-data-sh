@@ -1,0 +1,7 @@
+#!/bin/sh
+while read -r line || [ "$line" ]; do
+  IFS=" "; for item in $line; do
+    printf "\\$(printf '%o' "0x$item")" 
+  done
+done
+# expects hex data; space separated 
